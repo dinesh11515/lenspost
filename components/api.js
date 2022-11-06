@@ -505,3 +505,25 @@ export const signCreatePostTypedData = async (request, token) => {
   const signature = await signedTypeData(typedData.domain, typedData.types, typedData.value);
   return { result, signature };
 }
+
+export const broadcastRequest = async (request) => {
+  const result = await client.mutate({
+    mutation: createPostViaBroadcast,
+    variables: {
+      request,
+    },
+  });
+
+  return result.data.broadcast;
+};
+
+export const createPostViaDispatcherRequest = async (request) => {
+  const result = await client.mutate({
+    mutation: createPostViaDispatcher,
+    variables: {
+      request,
+    }
+  });
+
+  return result.data.createPostViaDispatcher;
+};

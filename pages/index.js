@@ -5,27 +5,54 @@ import { useContext,useState } from 'react'
 import { lensContext } from '../context/lensContext'
 import { v4 as uuid } from 'uuid'
 import { ethers } from 'ethers'
-import { client, challenge, authenticate, getDefaultProfile,createPostTypedData,createPostViaDispatcher,hasTxHashBeenIndexed,createProfileRequest,
-  signCreatePostTypedData,LENS_HUB_CONTRACT, splitSignature, validateMetadata,createPostViaBroadcast} from '../components/api'
+import { DownOutlined } from '@ant-design/icons';
+import { Dropdown, Space } from 'antd';
+import { client,createProfileRequest,createPostViaDispatcherRequest,
+  signCreatePostTypedData,LENS_HUB_CONTRACT, splitSignature, validateMetadata,broadcastRequest} from '../components/api'
 import { LENS_HUB_ABI } from '../components/abi'
-import { Web3Storage } from 'web3.storage';
-import { UploadOutlined } from '@ant-design/icons';
-import { Button, Upload } from 'antd';
+
+import { create } from 'ipfs-http-client'
+
+const projectId = process.env.NEXT_PUBLIC_PROJECT_ID
+const projectSecret = process.env.NEXT_PUBLIC_PROJECT_SECRET
+const auth = 'Basic ' + Buffer.from(projectId + ':' + projectSecret).toString('base64');
+
+const ipfsClient = create({
+  host: 'ipfs.infura.io',
+  port: 5001,
+  protocol: 'https',
+  headers: {
+      authorization: auth,
+  },
+})
 export default function Home() {
-  const {handle,provider,token,profileId,profile,hasHandle,signInWithLens} = useContext(lensContext)
+  const {handle,provider,token,profileId,profile,hasHandle,signInWithLens,connectWallet} = useContext(lensContext)
   const [postData,setPostData] = useState(null)
   const [handleName,setHandleName] = useState("")
-  function makeFileObjects (data) {
-    const obj = data;
-    const blob = new Blob([JSON.stringify(obj)], { type: 'application/json' })
+  const [fileType, setFileType] = useState("File Type")
+  const [file,setFile] = useState(null)
+  const items = [
+    {
+      label:<button onClick={()=>setFileType("IMAGE")}>Image</button>,
+      key: '0',
+    },
+    {
+      label: <button onClick={()=>setFileType("VIDEO")}>Video</button>,
+      key: '1',
+    },
+    {
+      label: <button onClick={()=>setFileType("AUDIO")}>Audio</button>,
+      key: '2',
+    },
+  ];
   
-    const files = [
-      new File([blob], 'post.json')
-    ]
-    return files
-  }
   const uploadToIpfs = async () => {
     try{
+      let added;
+      if(file){
+        added = await ipfsClient.add(file)
+      }
+      
       const metadata = {
         version: '2.0.0',
         content: postData,
@@ -33,24 +60,30 @@ export default function Home() {
         name: `Post by @${handle}`,
         external_url: `https://lenster.xyz/u/${handle}`,
         metadata_id: uuid(),
-        mainContentFocus: 'TEXT_ONLY',
-        attributes: [],
+        mainContentFocus: file ? fileType :'TEXT_ONLY',
+        media : file ? [
+          {
+            item: "ipfs://"+added.path,
+            type: file.type,
+          },
+        ] : [],
         locale: 'en-US',
+        attributes: []
       }
-      console.log(uuid())
-      console.log(metadata)
+
       const result = await client.query({
         query: validateMetadata,
         variables: {
           metadata: metadata
         }
       })
-      console.log('Metadata verification request: ', result)
-      const ipfsClient = new Web3Storage({ token: process.env.NEXT_PUBLIC_WEB3_STORAGE_KEY });
-      const files = makeFileObjects(metadata);
-      const cid = await ipfsClient.put([files[0]]);
-      const url = ("ipfs://"+cid+"/post.json");
-      return url;
+      console.log("result",result)
+      if(!result.data.validatePublicationMetadata.valid){
+        throw new Error("Invalid metadata")
+      }
+      const cid = await ipfsClient.add(JSON.stringify(metadata))
+      console.log("cid",cid)
+      return cid;
     }
     catch(err){
       console.log(err)
@@ -61,7 +94,7 @@ export default function Home() {
       const url = await uploadToIpfs()
       const createPostRequest = {
         profileId,
-        contentURI: url,
+        contentURI: 'ipfs://' + url.path,
         collectModule: {
           freeCollectModule: { followerOnly: true }
         },
@@ -93,71 +126,14 @@ export default function Home() {
       console.log(err)
     }
   }
-  const createPostViaDispatcherRequest = async (request) => {
-    const result = await client.mutate({
-      mutation: createPostViaDispatcher,
-      variables: {
-        request,
-      },
-      context: {
-        headers: {
-          "x-access-token": `Bearer ${token}`
-        }
-      }
-    });
   
-    return result.data.createPostViaDispatcher;
-  };
-  const hasTxBeenIndexed = async (request) => {
-    const result = await client.query({
-      query: hasTxHashBeenIndexed,
-      variables: {
-        request,
-      },
-      fetchPolicy: 'network-only',
-    });
   
-    return result.data.hasTxHashBeenIndexed;
-  };
-  const pollUntilIndexed = async (input) => {
-    while (true) {
-      const response = await hasTxBeenIndexed(input);
-      console.log('pool until indexed: result', response);
-  
-      if (response.__typename === 'TransactionIndexedResult') {
-        console.log('pool until indexed: indexed', response.indexed);
-        console.log('pool until metadataStatus: metadataStatus', response.metadataStatus);
-  
-        console.log(response.metadataStatus);
-        if (response.metadataStatus) {
-          if (response.metadataStatus.status === 'SUCCESS') {
-            return response;
-          }
-  
-          if (response.metadataStatus.status === 'METADATA_VALIDATION_FAILED') {
-            throw new Error(response.metadataStatus.status);
-          }
-        } else {
-          if (response.indexed) {
-            return response;
-          }
-        }
-  
-        console.log('pool until indexed: sleep for 1500 milliseconds then try again');
-        // sleep for a second before trying again
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-      } else {
-        // it got reverted and failed!
-        throw new Error(response.reason);
-      }
-    }
-  };
   const postViaDispacter = async () => {
     try{
       const url = await uploadToIpfs()
       const createPostRequest = {
         profileId,
-        contentURI: url,
+        contentURI: 'ipfs://' + url.path,
         collectModule: {
           freeCollectModule: { followerOnly: false }
         },
@@ -166,55 +142,20 @@ export default function Home() {
         },
       }
       const result = await createPostViaDispatcherRequest(createPostRequest);
-      console.log('create post via dispatcher: createPostViaDispatcherRequest', result);
-      const indexedResult = await pollUntilIndexed({txId: result.txId});
-
-      console.log('create post: profile has been indexed', result);
-
-      const logs = indexedResult.txReceipt.logs;
-
-      console.log('create post: logs', logs);
-
-      const topicId = utils.id(
-        'PostCreated(uint256,uint256,string,address,bytes,address,bytes,uint256)'
-      );
-      console.log('topicid we care about', topicId);
-
-      const profileCreatedLog = logs.find((l) => l.topics[0] === topicId);
-      console.log('create post: created log', profileCreatedLog);
-
-      let profileCreatedEventLog = profileCreatedLog.topics;
-      console.log('create post: created event logs', profileCreatedEventLog);
-
-      const publicationId = utils.defaultAbiCoder.decode(['uint256'], profileCreatedEventLog[2])[0];
-
-      console.log('create post: contract publication id', BigNumber.from(publicationId).toHexString());
-      console.log(
-        'create post: internal publication id',
-        profileId + '-' + BigNumber.from(publicationId).toHexString()
-      );
-
+      console.log(result);
     }
     catch(err){
       console.log(err)
     }
   }
-  const broadcastRequest = async (request) => {
-    const result = await client.mutate({
-      mutation: createPostViaBroadcast,
-      variables: {
-        request,
-      },
-    });
   
-    return result.data.broadcast;
-  };
   const postViaBroadcast = async () => {
     try{
       const url = await uploadToIpfs()
+      console.log(url)
       const createPostRequest = {
         profileId,
-        contentURI: url,
+        contentURI: 'ipfs://' + url.path,
         collectModule: {
           freeCollectModule: { followerOnly: false }
         },
@@ -227,33 +168,7 @@ export default function Home() {
         id: signedResult.result.id,
         signature: signedResult.signature,
       });
-      console.log('create post via broadcast', result);
-      const indexedResult = await pollUntilIndexed({txId: result.txId});
-
-      console.log('create post: profile has been indexed', result);
-
-      const logs = indexedResult.txReceipt.logs;
-
-      console.log('create post: logs', logs);
-
-      const topicId = utils.id(
-        'PostCreated(uint256,uint256,string,address,bytes,address,bytes,uint256)'
-      );
-      console.log('topicid we care about', topicId);
-
-      const profileCreatedLog = logs.find((l) => l.topics[0] === topicId);
-      console.log('create post: created log', profileCreatedLog);
-
-      let profileCreatedEventLog = profileCreatedLog.topics;
-      console.log('create post: created event logs', profileCreatedEventLog);
-
-      const publicationId = utils.defaultAbiCoder.decode(['uint256'], profileCreatedEventLog[2])[0];
-
-      console.log('create post: contract publication id', BigNumber.from(publicationId).toHexString());
-      console.log(
-        'create post: internal publication id',
-        profileId + '-' + BigNumber.from(publicationId).toHexString()
-      );
+      console.log(result);
       }
     catch(err){
       console.log(err)
@@ -267,10 +182,9 @@ export default function Home() {
   function onChangeHandle(e) {
     setHandleName(e.target.value)
   }
-  console.log(handleName)
   const createProfile = async () => {
     try {
-      // await signInWithLens();
+      await signInWithLens();
       const request = {
         handle: handleName,
         profilePictureUri: null,
@@ -284,12 +198,14 @@ export default function Home() {
         },
       });
       console.log(response)
+      await connectWallet()
     }
     catch(err){
       console.log(err)
     }
   }
-  console.log(profileId)
+  console.log(fileType)
+  
   return (
     <div className={styles.container}>
       <Head>
@@ -299,15 +215,33 @@ export default function Home() {
       </Head>
       {
         hasHandle ? 
-        <div className='mx-40 flex items-center flex-col'>
-        <textarea className='w-1/2 h-1/3 border-2 border-gray-300 rounded-lg p-4 focus:outline-none' onChange={onChange} placeholder='Write your post here...'></textarea>
-        <input type="file" accept=".xls,.xlsx" />
-    
-        <button className='bg-blue-500 text-white rounded-lg px-4 py-2 ml-4' onClick={postViaBroadcast}>Post</button>
+        <div className='flex flex-col items-center '>
+        <div className='mx-40 flex justify-center flex-col text-xl gap-6 w-1/3'>
+        <textarea className='w-full h-1/3 border-2 border-gray-300 rounded-lg p-4 focus:outline-none' onChange={onChange} placeholder='Write your post here...'></textarea>
+        <input type="file" accept="image/gif,image/jpeg,image/png,image/tiff,image/x-ms-bmp,image/svg+xml,image/webp,video/webm,video/mp4,video/x-m4v,video/ogv
+              ,video/ogg,audio/wav,audio/mpeg,audio/ogg" onChange={(e) => setFile(e.target.files[0])}/>
+        <Dropdown
+          menu={{
+            items,
+          }}
+          trigger={['click']}
+        >
+          <a>
+            <Space>
+              {fileType}
+              <DownOutlined />
+            </Space>
+          </a>
+        </Dropdown>
+        <div className='flex items-center gap-10 text-lg justify-center'>
+          <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={post}>Post </button>
+          <button className='bg-[#abfe2ccc]  rounded-xl px-14 py-2' onClick={postViaBroadcast}>Post gasless</button>
+        </div>
+        </div>
         </div>
         :
-        <div className='mx-40 flex items-center flex-col'>
-          <input className='w-1/2 h-1/3 border-2 border-gray-300 rounded-lg p-4 focus:outline-none' onChange={onChangeHandle} placeholder='Enter your handle...'></input>
+        <div className='mx-40 flex items-center flex-col gap-4'>
+          <input className='w-1/3 h-1/3 border-2 border-gray-300 rounded-lg p-3 focus:outline-none' onChange={onChangeHandle} placeholder='Enter some name for Claiming handle...'></input>
           <button className='bg-blue-500 text-white rounded-lg px-4 py-2 ml-4' onClick={createProfile}>Create Profile</button>
         </div>
       }

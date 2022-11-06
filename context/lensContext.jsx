@@ -48,7 +48,6 @@ export default function Layout({children}) {
                 address
               }
             })
-            console.log(response)
             if(response.data.defaultProfile === null){
               response = await client.query({
                 query: getProfiles,
@@ -60,15 +59,16 @@ export default function Layout({children}) {
                 setProfileId(response.data.profiles.items[0].id)
                 setHandle(response.data.profiles.items[0].handle)
                 setProfile(response.data.profiles.items)
+                setHasHandle(true)
               }
               else{
                 setHasHandle(false);
-                
               }
             }else{
               setProfileId(response.data.defaultProfile.id)
               setHandle(response.data.defaultProfile.handle)
               setProfile(response.data.defaultProfile)
+              setHasHandle(true)
             }
             
             setProvider(signer);
