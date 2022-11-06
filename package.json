@@ -20,8 +20,7 @@
     "omit-deep": "^0.3.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "uuid": "^9.0.0",
-    "web3.storage": "^4.4.0"
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.13",

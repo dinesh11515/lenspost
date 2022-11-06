@@ -243,7 +243,7 @@ export default function Home() {
           :
           <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={signInWithLens}>Sign in with {handle}</button>
           :
-          <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={connect}>Connect Wallet</button>
+          <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={connectWallet}>Connect Wallet</button>
         }
         
         </div>
