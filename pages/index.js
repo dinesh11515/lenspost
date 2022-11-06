@@ -26,7 +26,7 @@ const ipfsClient = create({
   },
 })
 export default function Home() {
-  const {handle,provider,token,profileId,profile,hasHandle,signInWithLens,connectWallet} = useContext(lensContext)
+  const {handle,provider,token,profileId,profile,hasHandle,signInWithLens,connectWallet,connected} = useContext(lensContext)
   const [postData,setPostData] = useState(null)
   const [handleName,setHandleName] = useState("")
   const [fileType, setFileType] = useState("File Type")
@@ -204,7 +204,7 @@ export default function Home() {
       console.log(err)
     }
   }
-  console.log(fileType)
+  
   
   return (
     <div className={styles.container}>
@@ -233,10 +233,19 @@ export default function Home() {
             </Space>
           </a>
         </Dropdown>
-        <div className='flex items-center gap-10 text-lg justify-center'>
-          <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={post}>Post </button>
-          <button className='bg-[#abfe2ccc]  rounded-xl px-14 py-2' onClick={postViaBroadcast}>Post gasless</button>
-        </div>
+        {
+          connected ? 
+          token ?
+          <div className='flex items-center gap-10 text-lg justify-center'>
+            <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={post}>Post </button>
+            <button className='bg-[#abfe2ccc]  rounded-xl px-14 py-2' onClick={postViaBroadcast}>Post gasless</button>
+          </div>
+          :
+          <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={signInWithLens}>Sign in with {handle}</button>
+          :
+          <button className='bg-[#abfe2ccc]  px-14 py-2 rounded-xl' onClick={connect}>Connect Wallet</button>
+        }
+        
         </div>
         </div>
         :
